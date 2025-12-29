@@ -1,0 +1,21 @@
+{
+  "name": "@weather-app/api",
+  "version": "1.0.0",
+  "description": "Weather Subscription App API",
+  "private": true,
+  "scripts": {
+    "install:all": "npm install && cd layers/dependencies && npm install && cd ../.. && cd src/subscriptions && npm install && cd ../weather && npm install && cd ../weather-fetch && npm install && cd ../..",
+    "build": "sam build",
+    "deploy": "sam deploy",
+    "deploy:guided": "sam deploy --guided",
+    "local": "sam local start-api",
+    "logs:subscriptions": "sam logs -n SubscriptionsFunction --tail",
+    "logs:weather": "sam logs -n WeatherFunction --tail",
+    "logs:weather-fetch": "sam logs -n WeatherFetchFunction --tail",
+    "validate": "sam validate",
+    "clean": "rm -rf .aws-sam"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}

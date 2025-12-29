@@ -1,0 +1,20 @@
+{
+  "name": "weather-subscription-app",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "yarn workspace @weather-app/web dev",
+    "build:web": "yarn workspace @weather-app/web build",
+    "build:shared": "yarn workspace @weather-app/shared build",
+    "build:api": "cd apps/api && sam build",
+    "deploy:api": "cd apps/api && sam deploy",
+    "local:api": "cd apps/api && sam local start-api"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}

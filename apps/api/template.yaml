@@ -1,0 +1,283 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Weather Subscription App API
+
+Globals:
+  Function:
+    Timeout: 30
+    Runtime: nodejs20.x
+    MemorySize: 512
+    Environment:
+      Variables:
+        SUBSCRIPTIONS_TABLE: !Ref SubscriptionsTable
+        WEATHER_DATA_TABLE: !Ref WeatherDataTable
+        OPENWEATHER_API_KEY: !Ref OpenWeatherAPIKey
+    Layers:
+      - !Ref DependenciesLayer
+
+Parameters:
+  OpenWeatherAPIKey:
+    Type: String
+    Description: OpenWeatherMap API Key
+    NoEcho: true
+
+Resources:
+  # Cognito User Pool
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub ${AWS::StackName}-users
+      AutoVerifiedAttributes:
+        - email
+      UsernameAttributes:
+        - email
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: false
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub ${AWS::StackName}-web-client
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      PreventUserExistenceErrors: ENABLED
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+
+  # API Gateway
+  WeatherApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      Cors:
+        AllowMethods: "'GET,POST,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+      Auth:
+        Authorizers:
+          CognitoAuthorizer:
+            UserPoolArn: !GetAtt UserPool.Arn
+
+  # Gateway Responses - Add CORS headers to error responses
+  ApiGatewayResponse4XX:
+    Type: AWS::ApiGateway::GatewayResponse
+    Properties:
+      ResponseType: DEFAULT_4XX
+      RestApiId: !Ref WeatherApi
+      ResponseParameters:
+        gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+        gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        gatewayresponse.header.Access-Control-Allow-Methods: "'GET,POST,DELETE,OPTIONS'"
+
+  ApiGatewayResponse5XX:
+    Type: AWS::ApiGateway::GatewayResponse
+    Properties:
+      ResponseType: DEFAULT_5XX
+      RestApiId: !Ref WeatherApi
+      ResponseParameters:
+        gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+        gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        gatewayresponse.header.Access-Control-Allow-Methods: "'GET,POST,DELETE,OPTIONS'"
+
+  # DynamoDB Tables
+  SubscriptionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: WeatherSubscriptions
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: UserIdIndex
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  WeatherDataTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: WeatherData
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: subscriptionId
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: SubscriptionIdIndex
+          KeySchema:
+            - AttributeName: subscriptionId
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  # Lambda Layer for shared dependencies
+  DependenciesLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: weather-app-dependencies
+      Description: Shared dependencies for Weather App
+      ContentUri: layers/dependencies/
+      CompatibleRuntimes:
+        - nodejs20.x
+    Metadata:
+      BuildMethod: nodejs20.x
+
+  # Lambda Functions
+  SubscriptionsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/subscriptions/
+      Handler: index.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SubscriptionsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref WeatherDataTable
+      Events:
+        CreateSubscription:
+          Type: Api
+          Properties:
+            RestApiId: !Ref WeatherApi
+            Path: /subscriptions
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+        ListSubscriptions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref WeatherApi
+            Path: /subscriptions
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+        DeleteSubscription:
+          Type: Api
+          Properties:
+            RestApiId: !Ref WeatherApi
+            Path: /subscriptions/{id}
+            Method: DELETE
+            Auth:
+              Authorizer: CognitoAuthorizer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - index.ts
+
+  WeatherFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/weather/
+      Handler: index.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref WeatherDataTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref SubscriptionsTable
+      Events:
+        GetWeather:
+          Type: Api
+          Properties:
+            RestApiId: !Ref WeatherApi
+            Path: /weather/{subscriptionId}
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - index.ts
+
+  WeatherFetchFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/weather-fetch/
+      Handler: index.handler
+      Timeout: 300
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SubscriptionsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref WeatherDataTable
+      Events:
+        ScheduledFetch:
+          Type: Schedule
+          Properties:
+            Schedule: rate(30 minutes)
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - index.ts
+
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub "https://${WeatherApi}.execute-api.${AWS::Region}.amazonaws.com/prod/"
+
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value: !Ref UserPool
+
+  UserPoolClientId:
+    Description: Cognito User Pool Client ID
+    Value: !Ref UserPoolClient
+
+  SubscriptionsTableName:
+    Description: DynamoDB Subscriptions Table
+    Value: !Ref SubscriptionsTable
+
+  WeatherDataTableName:
+    Description: DynamoDB Weather Data Table
+    Value: !Ref WeatherDataTable
