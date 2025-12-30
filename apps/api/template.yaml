@@ -83,8 +83,11 @@ Resources:
         AllowOrigin: "'*'"
       Auth:
         Authorizers:
-          CognitoAuthorizer:
-            UserPoolArn: !GetAtt UserPool.Arn
+          HybridAuthorizer:
+            FunctionArn: !GetAtt CustomAuthorizer.Arn
+            FunctionPayloadType: TOKEN
+            Identity:
+              Header: Authorization
 
   # Gateway Responses - Add CORS headers to error responses
   ApiGatewayResponse4XX:
@@ -234,6 +237,38 @@ Resources:
       BuildMethod: nodejs20.x
 
   # Lambda Functions
+  # Custom Authorizer for hybrid auth (Cognito JWT or API Key)
+  CustomAuthorizer:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/authorizer/
+      Handler: index.handler
+      Environment:
+        Variables:
+          USER_POOL_ID: !Ref UserPool
+          USER_POOL_CLIENT_ID: !Ref UserPoolClient
+          API_TOKENS_TABLE: !Ref ApiTokensTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref ApiTokensTable
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - index.ts
+
+  # Permission for API Gateway to invoke the Custom Authorizer
+  CustomAuthorizerPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref CustomAuthorizer
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WeatherApi}/authorizers/*
+
   SubscriptionsFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -252,7 +287,7 @@ Resources:
             Path: /subscriptions
             Method: POST
             Auth:
-              Authorizer: CognitoAuthorizer
+              Authorizer: HybridAuthorizer
         ListSubscriptions:
           Type: Api
           Properties:
@@ -260,7 +295,7 @@ Resources:
             Path: /subscriptions
             Method: GET
             Auth:
-              Authorizer: CognitoAuthorizer
+              Authorizer: HybridAuthorizer
         DeleteSubscription:
           Type: Api
           Properties:
@@ -268,7 +303,7 @@ Resources:
             Path: /subscriptions/{id}
             Method: DELETE
             Auth:
-              Authorizer: CognitoAuthorizer
+              Authorizer: HybridAuthorizer
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -296,7 +331,7 @@ Resources:
             Path: /weather/{subscriptionId}
             Method: GET
             Auth:
-              Authorizer: CognitoAuthorizer
+              Authorizer: HybridAuthorizer
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -347,7 +382,7 @@ Resources:
             Path: /tokens
             Method: POST
             Auth:
-              Authorizer: CognitoAuthorizer
+              Authorizer: HybridAuthorizer
         ListTokens:
           Type: Api
           Properties:
@@ -355,7 +390,7 @@ Resources:
             Path: /tokens
             Method: GET
             Auth:
-              Authorizer: CognitoAuthorizer
+              Authorizer: HybridAuthorizer
         RevokeToken:
           Type: Api
           Properties:
@@ -363,7 +398,7 @@ Resources:
             Path: /tokens/{id}
             Method: DELETE
             Auth:
-              Authorizer: CognitoAuthorizer
+              Authorizer: HybridAuthorizer
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
