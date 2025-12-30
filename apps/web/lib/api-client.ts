@@ -4,6 +4,10 @@ import type {
   CreateSubscriptionRequest,
   GetSubscriptionsResponse,
   GetWeatherResponse,
+  CreateTokenRequest,
+  CreateTokenResponse,
+  ListTokensResponse,
+  ApiToken,
 } from '@weather-app/shared';
 
 class ApiClient {
@@ -76,6 +80,35 @@ class ApiClient {
     return this.request<GetWeatherResponse>(
       `/weather/${subscriptionId}`,
       { method: 'GET' },
+      idToken
+    );
+  }
+
+  // API Token methods
+  async createToken(data: CreateTokenRequest, idToken: string): Promise<CreateTokenResponse> {
+    return this.request<CreateTokenResponse>(
+      '/tokens',
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      },
+      idToken
+    );
+  }
+
+  async listTokens(idToken: string): Promise<Omit<ApiToken, 'tokenHash'>[]> {
+    const response = await this.request<ListTokensResponse>(
+      '/tokens',
+      { method: 'GET' },
+      idToken
+    );
+    return response.tokens;
+  }
+
+  async revokeToken(tokenId: string, idToken: string): Promise<void> {
+    await this.request(
+      `/tokens/${tokenId}`,
+      { method: 'DELETE' },
       idToken
     );
   }

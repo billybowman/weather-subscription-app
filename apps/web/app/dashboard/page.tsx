@@ -107,12 +107,20 @@ export default function DashboardPage() {
       <header className="bg-white dark:bg-gray-800 shadow">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Weather Dashboard</h1>
-          <button
-            onClick={handleSignOut}
-            className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
-          >
-            Sign Out
-          </button>
+          <div className="flex gap-4 items-center">
+            <button
+              onClick={() => router.push('/dashboard/tokens')}
+              className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
+            >
+              API Tokens
+            </button>
+            <button
+              onClick={handleSignOut}
+              className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
+            >
+              Sign Out
+            </button>
+          </div>
         </div>
       </header>
 
