@@ -72,6 +72,11 @@ Resources:
     Type: AWS::Serverless::Api
     Properties:
       StageName: prod
+      MethodSettings:
+        - ResourcePath: '/*'
+          HttpMethod: '*'
+          ThrottlingRateLimit: 100
+          ThrottlingBurstLimit: 200
       Cors:
         AllowMethods: "'GET,POST,DELETE,OPTIONS'"
         AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
@@ -183,6 +188,38 @@ Resources:
       TimeToLiveSpecification:
         AttributeName: expiresAt
         Enabled: true
+
+  # API Gateway Usage Plan for rate limiting
+  ApiUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    Properties:
+      UsagePlanName: !Sub ${AWS::StackName}-usage-plan
+      Description: Rate limiting for Weather API
+      ApiStages:
+        - ApiId: !Ref WeatherApi
+          Stage: prod
+      Throttle:
+        RateLimit: 100
+        BurstLimit: 200
+      Quota:
+        Limit: 10000
+        Period: DAY
+
+  # Example API Key (for demonstration)
+  ExampleApiKey:
+    Type: AWS::ApiGateway::ApiKey
+    Properties:
+      Name: !Sub ${AWS::StackName}-example-key
+      Description: Example API key for usage plan demonstration
+      Enabled: true
+
+  # Associate API Key with Usage Plan
+  ApiUsagePlanKey:
+    Type: AWS::ApiGateway::UsagePlanKey
+    Properties:
+      KeyId: !Ref ExampleApiKey
+      KeyType: API_KEY
+      UsagePlanId: !Ref ApiUsagePlan
 
   # Lambda Layer for shared dependencies
   DependenciesLayer:
@@ -356,3 +393,11 @@ Outputs:
   WeatherDataTableName:
     Description: DynamoDB Weather Data Table
     Value: !Ref WeatherDataTable
+
+  UsagePlanId:
+    Description: API Gateway Usage Plan ID
+    Value: !Ref ApiUsagePlan
+
+  ExampleApiKeyId:
+    Description: Example API Key ID (for demonstration)
+    Value: !Ref ExampleApiKey
