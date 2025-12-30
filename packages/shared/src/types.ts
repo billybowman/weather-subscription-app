@@ -71,6 +71,32 @@ export interface GetWeatherResponse {
   forecast: WeatherForecast[];
 }
 
+// API Token types
+export interface ApiToken {
+  id: string;
+  userId: string;
+  name: string;
+  prefix: string; // First 12 chars for display (e.g., "wea_12345678...")
+  createdAt: string;
+  lastUsedAt?: string;
+  expiresAt?: number; // Unix timestamp
+  revoked: boolean;
+}
+
+export interface CreateTokenRequest {
+  name: string;
+  expiresInDays?: number; // Optional, max 365 days
+}
+
+export interface CreateTokenResponse {
+  token: string; // Plain text token - only shown once!
+  tokenInfo: Omit<ApiToken, 'tokenHash'>;
+}
+
+export interface ListTokensResponse {
+  tokens: Omit<ApiToken, 'tokenHash'>[];
+}
+
 // OpenWeatherMap API types
 export interface OpenWeatherMapResponse {
   coord: {

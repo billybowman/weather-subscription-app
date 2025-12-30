@@ -11,6 +11,7 @@ Globals:
       Variables:
         SUBSCRIPTIONS_TABLE: !Ref SubscriptionsTable
         WEATHER_DATA_TABLE: !Ref WeatherDataTable
+        API_TOKENS_TABLE: !Ref ApiTokensTable
         OPENWEATHER_API_KEY: !Ref OpenWeatherAPIKey
     Layers:
       - !Ref DependenciesLayer
@@ -151,6 +152,38 @@ Resources:
         AttributeName: ttl
         Enabled: true
 
+  ApiTokensTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: ApiTokens
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: tokenHash
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: UserIdIndex
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: TokenHashIndex
+          KeySchema:
+            - AttributeName: tokenHash
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+
   # Lambda Layer for shared dependencies
   DependenciesLayer:
     Type: AWS::Serverless::LayerVersion
@@ -252,6 +285,48 @@ Resources:
           Type: Schedule
           Properties:
             Schedule: rate(30 minutes)
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - index.ts
+
+  TokensFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/tokens/
+      Handler: index.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ApiTokensTable
+      Events:
+        CreateToken:
+          Type: Api
+          Properties:
+            RestApiId: !Ref WeatherApi
+            Path: /tokens
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+        ListTokens:
+          Type: Api
+          Properties:
+            RestApiId: !Ref WeatherApi
+            Path: /tokens
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+        RevokeToken:
+          Type: Api
+          Properties:
+            RestApiId: !Ref WeatherApi
+            Path: /tokens/{id}
+            Method: DELETE
+            Auth:
+              Authorizer: CognitoAuthorizer
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
